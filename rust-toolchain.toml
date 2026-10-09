@@ -1,0 +1,4 @@
+[toolchain]
+# 本机无 VS/MSVC 链接器;GNU 宿主工具链自带 MinGW 链接与导入库,零配置可构建。
+# CI 上默认 MSVC 工具链同样可构建(代码与目标无关)。
+channel = "stable-x86_64-pc-windows-gnu"
