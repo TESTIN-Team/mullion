@@ -27,14 +27,27 @@ pub const DEFAULT_FAMILIES: &[&str] = &["Segoe UI", "Microsoft YaHei UI", "Segoe
 
 struct Target {
     dc: HDC,
+    /// The DIB section handle; must be deleted after the DC.
+    dib: windows_sys::Win32::Graphics::Gdi::HBITMAP,
     pixels: *mut u8,
     w: i32,
     h: i32,
 }
 
+impl Drop for Target {
+    fn drop(&mut self) {
+        unsafe {
+            DeleteDC(self.dc);
+            DeleteObject(self.dib);
+        }
+    }
+}
+
 struct Inner {
     /// Memory DC carrying the currently selected font.
     dc: HDC,
+    /// Family fallback chain, in priority order.
+    families: Vec<String>,
     hfonts: HashMap<(usize, i32), HFONT>,
     selected: Option<(usize, i32)>,
     /// Raster target DIB, one at a time per size.
@@ -47,7 +60,7 @@ impl Inner {
         if let Some(h) = self.hfonts.get(&(family, px)) {
             return Some(*h);
         }
-        let name: Vec<u16> = DEFAULT_FAMILIES[family].encode_utf16().chain([0]).collect();
+        let name: Vec<u16> = self.families[family].encode_utf16().chain([0]).collect();
         // Negative height = character height in pixels.
         let h = unsafe {
             CreateFontW(
@@ -141,12 +154,12 @@ impl Inner {
             SetBkColor(target_dc, 0x0000_0000); // black
             SetTextAlign(target_dc, TA_LEFT | TA_BASELINE);
         }
-        if let Some(old) = self.target.take() {
-            unsafe { DeleteDC(old.dc) };
-        }
+        // Dropping the previous target deletes its DC and DIB.
+        self.target.take();
         self.target_px = px;
         self.target = Some(Target {
             dc: target_dc,
+            dib,
             pixels: bits as *mut u8,
             w: side,
             h: side,
@@ -157,9 +170,8 @@ impl Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        if let Some(t) = self.target.take() {
-            unsafe { DeleteDC(t.dc) };
-        }
+        // Target frees its DC and DIB on drop.
+        self.target.take();
         for (_, h) in self.hfonts.drain() {
             unsafe { DeleteObject(h) };
         }
@@ -180,6 +192,13 @@ pub struct GdiFontSet {
 impl GdiFontSet {
     /// Create a font set over [`DEFAULT_FAMILIES`].
     pub fn new() -> Option<Self> {
+        Self::with_families(DEFAULT_FAMILIES)
+    }
+
+    /// Create a font set over an explicit fallback chain, tried in order
+    /// for every glyph. At least one family should exist on the system;
+    /// empty chains disable rasterization entirely (all glyphs tofu).
+    pub fn with_families(families: &[&str]) -> Option<Self> {
         let dc = unsafe { CreateCompatibleDC(std::ptr::null_mut()) };
         if dc.is_null() {
             return None;
@@ -187,12 +206,18 @@ impl GdiFontSet {
         Some(Self {
             inner: std::sync::Mutex::new(Inner {
                 dc,
+                families: families.iter().map(|s| (*s).to_string()).collect(),
                 hfonts: HashMap::new(),
                 selected: None,
                 target: None,
                 target_px: 0,
             }),
         })
+    }
+
+    /// The configured family chain.
+    pub fn families(&self) -> Vec<String> {
+        self.inner.lock().unwrap().families.clone()
     }
 }
 
@@ -237,7 +262,8 @@ impl FontBackend for GdiFontSet {
         let mut inner = self.inner.lock().unwrap();
         let code = ch as u32;
 
-        for family in 0..DEFAULT_FAMILIES.len() {
+        let family_count = inner.families.len();
+        for family in 0..family_count {
             if !inner.select(family, px) {
                 continue;
             }

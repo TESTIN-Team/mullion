@@ -6,7 +6,7 @@
 use mullion::render::Framebuffer;
 use windows_sys::Win32::Graphics::Gdi::HDC;
 use windows_sys::Win32::Graphics::OpenGL::{
-    SwapBuffers, wglCreateContext, wglGetProcAddress, wglMakeCurrent,
+    SwapBuffers, wglCreateContext, wglDeleteContext, wglGetProcAddress, wglMakeCurrent,
 };
 
 #[allow(non_snake_case)]
@@ -16,6 +16,7 @@ unsafe extern "system" {
     fn glMatrixMode(mode: u32);
     fn glLoadIdentity();
     fn glGenTextures(n: i32, textures: *mut u32);
+    fn glDeleteTextures(n: i32, textures: *const u32);
     fn glBindTexture(target: u32, texture: u32);
     fn glTexParameteri(target: u32, pname: u32, param: i32);
     fn glTexImage2D(
@@ -60,13 +61,25 @@ const GL_VERTEX_ARRAY: u32 = 0x8074;
 const GL_TEXTURE_COORD_ARRAY: u32 = 0x8078;
 const GL_TRIANGLE_STRIP: u32 = 0x0005;
 
-/// Owns the GL context and the upload texture. One per window.
+/// Owns the GL context and the upload texture. One per window. Dropping
+/// releases the texture and destroys the GL context.
 pub struct WglPresent {
-    #[allow(dead_code)]
     hdc: HDC,
+    hglrc: windows_sys::Win32::Graphics::OpenGL::HGLRC,
     tex: u32,
     tex_w: i32,
     tex_h: i32,
+}
+
+impl Drop for WglPresent {
+    fn drop(&mut self) {
+        unsafe {
+            if wglMakeCurrent(self.hdc, std::ptr::null_mut()) != 0 && self.tex != 0 {
+                glDeleteTextures(1, &self.tex);
+            }
+            wglDeleteContext(self.hglrc);
+        }
+    }
 }
 
 impl WglPresent {
@@ -104,6 +117,7 @@ impl WglPresent {
             glGetError();
             Some(Self {
                 hdc,
+                hglrc,
                 tex,
                 tex_w: 0,
                 tex_h: 0,

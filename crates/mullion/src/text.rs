@@ -69,12 +69,25 @@ pub trait FontBackend {
     fn glyph(&self, ch: char, px: f32) -> Option<Glyph>;
 }
 
+/// One cached layout plus the frame it was last requested in (drives
+/// eviction so dynamic strings cannot grow the cache without bound).
+struct LayoutEntry {
+    layout: Arc<TextLayout>,
+    last_used: u64,
+}
+
+/// Soft cap on cached layouts; exceeded -> stale entries are dropped.
+const LAYOUT_CACHE_MAX: usize = 1024;
+/// Entries not requested for this many frames are considered stale.
+const LAYOUT_KEEP_FRAMES: u64 = 600;
+
 /// A font backend plus per-size caches. Cheap to share across frames.
 pub struct Shaper {
     backend: Arc<dyn FontBackend + Send + Sync>,
     glyphs: HashMap<(char, u32), Glyph>,
     metrics: HashMap<u32, FontMetrics>,
-    layouts: HashMap<(String, u32), Arc<TextLayout>>,
+    layouts: HashMap<(String, u32), LayoutEntry>,
+    frame: u64,
 }
 
 impl Shaper {
@@ -84,7 +97,14 @@ impl Shaper {
             glyphs: HashMap::new(),
             metrics: HashMap::new(),
             layouts: HashMap::new(),
+            frame: 0,
         }
+    }
+
+    /// Advance the frame counter used for layout cache eviction. The host
+    /// calls this once per frame.
+    pub fn new_frame(&mut self) {
+        self.frame += 1;
     }
 
     fn key(px: f32) -> u32 {
@@ -122,11 +142,16 @@ impl Shaper {
             .expect("glyph was never rasterized through this shaper")
     }
 
-    /// Shape `text` at `px` physical pixels, caching the result.
+    /// Shape `text` at `px` physical pixels, caching the result. Entries not
+    /// used for [`LAYOUT_KEEP_FRAMES`] frames are evicted once the cache
+    /// grows past [`LAYOUT_CACHE_MAX`], so ever-changing text (counters,
+    /// fps labels, edit buffers) cannot leak memory.
     pub fn layout(&mut self, text: &str, px: f32) -> Arc<TextLayout> {
         let k = Self::key(px);
-        if let Some(l) = self.layouts.get(&(text.to_string(), k)) {
-            return Arc::clone(l);
+        let key = (text.to_string(), k);
+        if let Some(e) = self.layouts.get_mut(&key) {
+            e.last_used = self.frame;
+            return Arc::clone(&e.layout);
         }
         let metrics = self.metrics(k as f32);
         let mut glyphs = Vec::with_capacity(text.chars().count());
@@ -144,9 +169,34 @@ impl Shaper {
             ascent: metrics.ascent,
             descent: metrics.descent,
         });
-        self.layouts
-            .insert((text.to_string(), k), Arc::clone(&layout));
+        if self.layouts.len() >= LAYOUT_CACHE_MAX {
+            let cutoff = self.frame.saturating_sub(LAYOUT_KEEP_FRAMES);
+            self.layouts.retain(|_, e| e.last_used > cutoff);
+            // Everything still hot: drop the single least-recently used.
+            if self.layouts.len() >= LAYOUT_CACHE_MAX {
+                let oldest = self
+                    .layouts
+                    .iter()
+                    .min_by_key(|(_, e)| e.last_used)
+                    .map(|(k, _)| k.clone());
+                if let Some(oldest) = oldest {
+                    self.layouts.remove(&oldest);
+                }
+            }
+        }
+        self.layouts.insert(
+            key,
+            LayoutEntry {
+                layout: Arc::clone(&layout),
+                last_used: self.frame,
+            },
+        );
         layout
+    }
+
+    /// Number of cached layouts (for tests and diagnostics).
+    pub fn layout_cache_len(&self) -> usize {
+        self.layouts.len()
     }
 
     /// X position of the caret before the byte at `byte_idx`.
@@ -321,6 +371,44 @@ mod tests {
         assert_eq!(s.hit(&l, 100.0), 5);
         assert!(l.snap_byte(3) == 1);
         assert_eq!(l.char_index(4), 2);
+    }
+
+    #[test]
+    fn layout_cache_is_bounded_for_dynamic_text() {
+        let mut s = shaper();
+        // Simulate frames: every frame a fresh counter string (dynamic text).
+        for f in 0..2000u64 {
+            s.new_frame();
+            let text = format!("dynamic value {}", f);
+            s.layout(&text, 15.0);
+        }
+        assert!(
+            s.layout_cache_len() <= 1024,
+            "cache must stay bounded, got {}",
+            s.layout_cache_len()
+        );
+        // The most recent entry is a cache hit (same Arc on re-request).
+        let a = s.layout("dynamic value 1999", 15.0);
+        let b = s.layout("dynamic value 1999", 15.0);
+        assert!(Arc::ptr_eq(&a, &b));
+    }
+
+    #[test]
+    fn layout_cache_evicts_stale_entries() {
+        let mut s = shaper();
+        s.new_frame();
+        s.layout("old", 15.0);
+        // Many frames later the entry is stale; a burst of unique strings
+        // pushes the cache over the cap and evicts it.
+        for f in 0..1500u64 {
+            s.new_frame();
+            s.layout(&format!("burst {}", f), 15.0);
+        }
+        assert!(s.layout_cache_len() <= 1024);
+        let a = s.layout("old", 15.0);
+        let b = s.layout("old", 15.0);
+        // Re-created after eviction, but still consistent afterwards.
+        assert!(Arc::ptr_eq(&a, &b));
     }
 
     #[test]

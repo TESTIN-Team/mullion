@@ -85,6 +85,7 @@ impl Ctx {
 
     /// Start a frame. `input` positions are logical pixels.
     pub fn begin(&mut self, input: FrameInput) {
+        self.shaper.new_frame();
         self.input = input;
         self.key_consumed = vec![false; self.input.keys.len()];
         self.rects.clear();
@@ -112,9 +113,10 @@ impl Ctx {
         }
         self.memory.prev_rects = std::mem::take(&mut self.rects);
         self.memory.prev_focusables = std::mem::take(&mut self.focusables);
-        // The release frame ends the capture; last_mouse feeds next frame's
-        // drag deltas.
-        if self.input.primary_released {
+        // The release frame ends the capture — unless a new press already
+        // happened in the same frame (press-release-press), in which case
+        // the drag continues. last_mouse feeds next frame's drag deltas.
+        if self.input.primary_released && !self.input.primary_down {
             self.memory.pointer_capture = None;
         }
         self.memory.last_mouse = self.input.mouse_pos;
@@ -165,10 +167,14 @@ impl Ctx {
             self.memory.pointer_capture = Some(id);
             drag_started = true;
         }
+        // A press followed by a release inside the SAME frame must still
+        // count as a click, so a capture taken during this call is as good
+        // as one held from a previous frame.
+        let owns_pointer = capture == Some(id) || drag_started;
         // `drag_started` counts as dragging so sliders track on the press
         // frame already.
-        let dragging = (capture == Some(id) || drag_started) && self.input.primary_down;
-        let clicked = self.input.primary_released && capture == Some(id) && hovered;
+        let dragging = owns_pointer && self.input.primary_down;
+        let clicked = self.input.primary_released && owns_pointer && hovered;
 
         let drag_delta = if dragging {
             self.input
@@ -514,5 +520,56 @@ mod tests {
         assert!(c.key_pressed(Key::Enter, false));
         assert!(!c.key_pressed(Key::Enter, false), "second ask must fail");
         c.end();
+    }
+
+    #[test]
+    fn same_frame_click_registers() {
+        let mut c = ctx();
+        // Register the widget first.
+        c.begin(frame_input(None, false, false));
+        c.interact(BTN, btn_rect());
+        c.end();
+
+        // Press AND release arrive within one frame (fast click / event
+        // coalescing): the widget must still report a click.
+        c.begin(frame_input(Some(Vec2::new(50.0, 15.0)), false, false));
+        c.input.primary_pressed = true;
+        c.input.primary_released = true;
+        c.input.primary_down = false;
+        let r = c.interact(BTN, btn_rect());
+        assert!(r.clicked, "a full click inside one frame must not be lost");
+        assert!(!r.dragging);
+        c.end();
+        assert_eq!(
+            c.memory.pointer_capture, None,
+            "capture released with the pointer"
+        );
+    }
+
+    #[test]
+    fn press_release_press_keeps_dragging() {
+        let mut c = ctx();
+        c.begin(frame_input(None, false, false));
+        c.interact(BTN, btn_rect());
+        c.end();
+
+        // Press, then release+re-press inside one frame: the drag continues.
+        c.begin(frame_input(Some(Vec2::new(50.0, 15.0)), true, false));
+        c.interact(BTN, btn_rect());
+        c.end();
+
+        c.begin(frame_input(Some(Vec2::new(60.0, 15.0)), false, false));
+        c.input.primary_released = true;
+        c.input.primary_pressed = true;
+        c.input.primary_down = true;
+        let r = c.interact(BTN, btn_rect());
+        assert!(r.clicked, "the completed first click registers");
+        assert!(r.dragging, "the second press continues the drag");
+        c.end();
+        assert_eq!(
+            c.memory.pointer_capture,
+            Some(BTN),
+            "capture survives the re-press"
+        );
     }
 }

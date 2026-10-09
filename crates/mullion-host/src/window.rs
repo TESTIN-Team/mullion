@@ -757,7 +757,14 @@ pub fn run(app: Box<dyn App>, config: WindowConfig) -> Option<RunStats> {
         // Detach before drop so late messages don't touch freed memory.
         windows_sys::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, -21, 0);
         DestroyWindow(hwnd);
+        // Release the GL context (and its texture) while the DC is still
+        // valid, then the DC, then the window class.
+        runner.gl = None;
         ReleaseDC(hwnd, runner.hdc);
+        windows_sys::Win32::UI::WindowsAndMessaging::UnregisterClassW(
+            class_name.as_ptr(),
+            hinstance,
+        );
         Some(runner.stats)
     }
 }

@@ -84,7 +84,17 @@ impl Framebuffer {
 /// Render one frame. Clears with `display.clear` (opaque black if absent).
 pub fn render(display: &Display, shaper: &Shaper, fb: &mut Framebuffer) {
     fb.clear(display.clear.unwrap_or(Color::BLACK));
+    // Degenerate rect used when a clip intersection is empty: every raster
+    // path no-ops on it.
+    const EMPTY: Rect = Rect {
+        min: crate::geometry::Vec2::new(1.0, 1.0),
+        max: crate::geometry::Vec2::new(0.0, 0.0),
+    };
     for layer in &display.layers {
+        // Clip stack per layer: PopClip restores the enclosing clip, so
+        // nested clips (scroll area inside a window, edit inside a scroll)
+        // stay correctly nested.
+        let mut clip_stack: Vec<Rect> = Vec::new();
         let mut clip = Rect::EVERYTHING;
         for cmd in &layer.cmds {
             match cmd {
@@ -112,12 +122,10 @@ pub fn render(display: &Display, shaper: &Shaper, fb: &mut Framebuffer) {
                     draw_text(fb, clip, shaper, layout, *pos, *color);
                 }
                 Cmd::PushClip(r) => {
-                    clip = clip.intersect(*r).unwrap_or(Rect {
-                        min: crate::geometry::Vec2::new(1.0, 1.0),
-                        max: crate::geometry::Vec2::new(0.0, 0.0),
-                    });
+                    clip_stack.push(clip);
+                    clip = clip.intersect(*r).unwrap_or(EMPTY);
                 }
-                Cmd::PopClip => clip = Rect::EVERYTHING,
+                Cmd::PopClip => clip = clip_stack.pop().unwrap_or(Rect::EVERYTHING),
             }
         }
     }
@@ -496,6 +504,65 @@ mod tests {
         assert_eq!(fb.pixel(6, 8).r, 0);
         // Below baseline descent area.
         assert_eq!(fb.pixel(2, 14).r, 0);
+    }
+
+    #[test]
+    fn nested_clip_restores_previous_clip() {
+        let mut fb = Framebuffer::new(16, 16);
+        fb.clear(Color::rgb(0, 0, 0));
+        let mut dl = crate::draw::DrawList::default();
+        // Outer clip covers the left half.
+        let outer = Rect::from_xywh(0.0, 0.0, 8.0, 16.0);
+        // Inner clip (nested) covers the top-left quarter only.
+        let inner = Rect::from_xywh(0.0, 0.0, 4.0, 4.0);
+        dl.push_clip(outer);
+        dl.push_clip(inner);
+        dl.rect(
+            Rect::from_xywh(0.0, 0.0, 16.0, 16.0),
+            Some(GREEN),
+            None,
+            0.0,
+        ); // only 4x4 lands
+        dl.pop_clip();
+        // After popping the inner clip, drawing must clip to the OUTER rect,
+        // not to the whole framebuffer.
+        dl.rect(Rect::from_xywh(0.0, 0.0, 16.0, 16.0), Some(RED), None, 0.0); // left half only
+        dl.pop_clip();
+        let display = Display {
+            layers: vec![dl],
+            clear: Some(Color::rgb(0, 0, 0)),
+        };
+        render(
+            &display,
+            &crate::text::Shaper::new(std::sync::Arc::new(NoFont)),
+            &mut fb,
+        );
+        assert_eq!(
+            fb.pixel(1, 1).r,
+            255,
+            "inner clip area gets the later red fill too"
+        );
+        assert_eq!(fb.pixel(1, 15).r, 255, "outer clip region filled after pop");
+        assert_eq!(
+            fb.pixel(12, 8).r,
+            0,
+            "outside the outer clip stays untouched"
+        );
+        assert_eq!(fb.pixel(12, 8).g, 0);
+    }
+
+    struct NoFont;
+    impl crate::text::FontBackend for NoFont {
+        fn metrics(&self, _px: f32) -> crate::text::FontMetrics {
+            crate::text::FontMetrics {
+                ascent: 10.0,
+                descent: 3.0,
+                line_gap: 0.0,
+            }
+        }
+        fn glyph(&self, _ch: char, _px: f32) -> Option<crate::text::Glyph> {
+            None
+        }
     }
 
     #[test]
