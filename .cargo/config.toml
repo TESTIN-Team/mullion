@@ -1,0 +1,17 @@
+# 构建说明(与 rimely 同一套已验证方案,工具经 junction 共享)
+# - 产物目标 x86_64-pc-windows-msvc;本机无 VS/MSVC,链接用 rustc 自带 lld-link
+#   + xwin splat 的系统导入库(tools/,目录 junction 指向 rimely 的工具,已 gitignore)
+# - 选 MSVC target 的原因:egui 依赖链里的 windows-link 使用 raw-dylib,GNU target
+#   上 rustc 需要外部 dlltool+as 组合(本机不可用),MSVC target 原生支持
+# - 克隆后前置检查:ls tools/bin/lld-link.exe tools/xwin-splat/crt/lib/x86_64
+#   缺失则先恢复工具链再构建
+[build]
+target = "x86_64-pc-windows-msvc"
+
+[target.x86_64-pc-windows-msvc]
+linker = "tools/bin/lld-link.exe"
+rustflags = [
+    "-L", "native=tools/xwin-splat/crt/lib/x86_64",
+    "-L", "native=tools/xwin-splat/sdk/lib/um/x86_64",
+    "-L", "native=tools/xwin-splat/sdk/lib/ucrt/x86_64",
+]

@@ -1,12 +1,8 @@
-//! mullion widget gallery. Runs interactively by default; `--smoke [out.png]`
-//! renders 12 hidden frames (resizing midway), writes a PNG receipt and a
-//! JSON stats line, then exits.
+//! mullion + egui widget gallery. Interactive by default; `--smoke [out.png]`
+//! renders 12 hidden frames (resizing midway), captures the backbuffer as a
+//! PNG receipt, prints a JSON stats line and exits.
 
-use mullion::layout::{Column, form_row};
-use mullion::memory::id_of;
-use mullion::widgets;
-use mullion::{Ctx, Vec2};
-use mullion_host::{App, SmokeConfig, WindowConfig, run};
+use mullion_host::{SmokeConfig, WindowConfig, run_egui};
 use std::time::Instant;
 
 struct Gallery {
@@ -15,11 +11,9 @@ struct Gallery {
     check_b: bool,
     slider: f32,
     counter: u32,
-    win_main: Vec2,
-    win_input: Vec2,
-    win_about: Vec2,
-    input_open: bool,
-    about_open: bool,
+    name: String,
+    combo: usize,
+    dark: bool,
     t0: Instant,
     frames: u64,
     fps: f32,
@@ -31,13 +25,11 @@ impl Default for Gallery {
             toggle: true,
             check_a: true,
             check_b: false,
-            slider: 0.35,
+            slider: 35.0,
             counter: 0,
-            win_main: Vec2::new(24.0, 24.0),
-            win_input: Vec2::new(360.0, 24.0),
-            win_about: Vec2::new(360.0, 300.0),
-            input_open: true,
-            about_open: true,
+            name: String::new(),
+            combo: 0,
+            dark: true,
             t0: Instant::now(),
             frames: 0,
             fps: 0.0,
@@ -45,9 +37,15 @@ impl Default for Gallery {
     }
 }
 
-impl App for Gallery {
-    fn ui(&mut self, ctx: &mut Ctx) {
-        // Framerate over one-second windows.
+const THEMES: &[&str] = &["强调色 · 蓝", "强调色 · 绿", "强调色 · 橙"];
+const ACCENTS: [egui::Color32; 3] = [
+    egui::Color32::from_rgb(79, 140, 255),
+    egui::Color32::from_rgb(94, 190, 126),
+    egui::Color32::from_rgb(240, 160, 64),
+];
+
+impl Gallery {
+    fn ui(&mut self, ctx: &egui::Context) {
         self.frames += 1;
         let elapsed = self.t0.elapsed().as_secs_f32();
         if elapsed >= 1.0 {
@@ -56,135 +54,126 @@ impl App for Gallery {
             self.t0 = Instant::now();
         }
 
-        if let Some(body) = widgets::window(
-            ctx,
-            id_of("main"),
-            "控件总览",
-            &mut self.win_main,
-            Vec2::new(320.0, 300.0),
-            &mut true,
-        ) {
-            let mut col = Column::with_padding(body, 10.0, 8.0);
+        let mut visuals = if self.dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+        visuals.selection.bg_fill = ACCENTS[self.combo.min(2)];
+        ctx.set_visuals(visuals);
 
-            let r = col.add(30.0);
-            let (lr, fr) = form_row(r, 64.0);
-            widgets::label(ctx, lr, "按钮", None);
-            let resp = widgets::button(ctx, fr, "点我");
-            if resp.double_clicked {
-                self.counter = self.counter.wrapping_add(10);
-            } else if resp.activated() {
-                self.counter = self.counter.wrapping_add(1);
-            }
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("mullion · egui 控件总览");
+            ui.separator();
 
-            let r = col.add(30.0);
-            let (lr, fr) = form_row(r, 64.0);
-            widgets::label(ctx, lr, "计数", None);
-            let count_text = format!("已点击 {} 次", self.counter);
-            widgets::label(ctx, fr, &count_text, None);
+            egui::SidePanel::left("main")
+                .default_width(340.0)
+                .show_inside(ui, |ui| {
+                    egui::Grid::new("form")
+                        .num_columns(2)
+                        .spacing([12.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label("按钮");
+                            if ui.button("点我(单击 +1)").clicked() {
+                                self.counter = self.counter.wrapping_add(1);
+                            }
+                            ui.end_row();
 
-            let r = col.add(26.0);
-            let (lr, fr) = form_row(r, 64.0);
-            widgets::label(ctx, lr, "开关", None);
-            self.toggle = widgets::toggle(ctx, fr, self.toggle);
+                            ui.label("双击");
+                            if ui.button("点我(双击 +10)").double_clicked() {
+                                self.counter = self.counter.wrapping_add(10);
+                            }
+                            ui.end_row();
 
-            let r = col.add(24.0);
-            let (lr, fr) = form_row(r, 64.0);
-            widgets::label(ctx, lr, "复选", None);
-            let mut row = mullion::layout::Row::new(fr, 8.0);
-            let b = row.add(120.0);
-            self.check_a = widgets::checkbox(ctx, b, self.check_a);
-            let b = row.add(120.0);
-            self.check_b = widgets::checkbox(ctx, b, self.check_b);
+                            ui.label("计数");
+                            ui.label(format!("已点击 {} 次", self.counter));
+                            ui.end_row();
 
-            let r = col.add(40.0);
-            let (lr, fr) = form_row(r, 64.0);
-            widgets::label(ctx, lr, "滑条", None);
-            self.slider = widgets::slider(ctx, fr, id_of("slider"), self.slider, 0.0, 100.0);
-            widgets::tooltip(ctx, id_of("slider.tip"), r, "拖动调整数值,方向键微调");
+                            ui.label("开关");
+                            ui.toggle_value(&mut self.toggle, "开关");
+                            ui.end_row();
 
-            let r = col.add(24.0);
-            let (lr, fr) = form_row(r, 64.0);
-            widgets::label(ctx, lr, "数值", None);
-            let v = format!("{:.1}", self.slider);
-            widgets::label(ctx, fr, &v, None);
+                            ui.label("复选");
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut self.check_a, "选项 A");
+                                ui.checkbox(&mut self.check_b, "选项 B");
+                            });
+                            ui.end_row();
 
-            let r = col.add(8.0);
-            widgets::progress(ctx, r, self.slider / 100.0);
+                            ui.label("滑条");
+                            let slider =
+                                egui::Slider::new(&mut self.slider, 0.0..=100.0).text("数值");
+                            ui.add(slider).on_hover_text("拖动调整数值,方向键微调");
+                            ui.end_row();
 
-            let r = col.add(4.0);
-            widgets::separator(ctx, r);
+                            ui.label("进度");
+                            ui.add(egui::ProgressBar::new(self.slider / 100.0).show_percentage());
+                            ui.end_row();
 
-            let rest = col.remaining_rect();
-            widgets::scroll_area(ctx, id_of("scroll"), rest, 220.0, |ctx, content| {
-                let mut list = Column::new(content, 4.0);
-                for i in 0..12 {
-                    let row = list.add(22.0);
-                    let text = format!("列表项 {:02} — mullion 软件光栅化", i + 1);
-                    widgets::label(ctx, row, &text, None);
-                }
+                            ui.label("下拉");
+                            egui::ComboBox::from_id_salt("combo")
+                                .selected_text(THEMES[self.combo])
+                                .width(160.0)
+                                .show_ui(ui, |ui| {
+                                    for (i, name) in THEMES.iter().enumerate() {
+                                        ui.selectable_value(&mut self.combo, i, *name);
+                                    }
+                                });
+                            ui.end_row();
+                        });
+
+                    ui.separator();
+                    ui.label("滚动列表");
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for i in 0..12 {
+                            ui.label(format!("列表项 {:02} — mullion × egui · WGL 呈现", i + 1));
+                        }
+                    });
+                });
+
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                egui::Grid::new("input")
+                    .num_columns(2)
+                    .spacing([12.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label("文本输入");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.name).hint_text("输入你的名字…"),
+                        );
+                        ui.end_row();
+
+                        ui.label("问候");
+                        let hello = if self.name.trim().is_empty() {
+                            "你好,匿名用户".to_string()
+                        } else {
+                            format!("你好,{}", self.name.trim())
+                        };
+                        ui.label(hello);
+                        ui.end_row();
+                    });
+
+                ui.separator();
+                ui.label("支持中文 IME、选区、Ctrl+A/C/V/X(egui 内建)");
+                ui.label("悬停控件查看 tooltip;滑条支持方向键微调");
+
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("切换明暗").clicked() {
+                            self.dark = !self.dark;
+                        }
+                        ui.label(format!("FPS {:.0} · egui 0.32 · Win32 + WGL", self.fps));
+                    });
+                });
             });
-        }
-
-        if self.input_open {
-            if let Some(body) = widgets::window(
-                ctx,
-                id_of("input"),
-                "文本输入 / IME",
-                &mut self.win_input,
-                Vec2::new(320.0, 150.0),
-                &mut self.input_open,
-            ) {
-                let mut col = Column::with_padding(body, 10.0, 8.0);
-                let r = col.add(28.0);
-                let name = widgets::line_edit(ctx, r, id_of("name"), "输入你的名字…");
-                let r = col.add(24.0);
-                let hello = if name.trim().is_empty() {
-                    "你好,匿名用户".to_string()
-                } else {
-                    format!("你好,{}", name.trim())
-                };
-                widgets::label(ctx, r, &hello, None);
-                let r = col.add(8.0);
-                widgets::separator(ctx, r);
-                let r = col.add(24.0);
-                widgets::label(ctx, r, "支持中文 IME、选区、Ctrl+A/C/V/X", None);
-            }
-        }
-
-        if self.about_open {
-            if let Some(body) = widgets::window(
-                ctx,
-                id_of("about"),
-                "关于",
-                &mut self.win_about,
-                Vec2::new(320.0, 190.0),
-                &mut self.about_open,
-            ) {
-                let mut col = Column::with_padding(body, 10.0, 6.0);
-                let r = col.add(24.0);
-                widgets::label(ctx, r, "mullion v0.1 — 纯 Rust GUI 框架", None);
-                let r = col.add(24.0);
-                widgets::label(ctx, r, "核心零依赖,Windows 后端 Win32+WGL", None);
-                let r = col.add(24.0);
-                let stats = format!("FPS {:.0} · 缩放 {:.2}", self.fps, ctx.style.scale);
-                widgets::label(ctx, r, &stats, None);
-                let r = col.add(30.0);
-                if widgets::button(ctx, r, "切换主题").activated() {
-                    ctx.style.theme = if ctx.style.theme == mullion::Theme::dark() {
-                        mullion::Theme::light()
-                    } else {
-                        mullion::Theme::dark()
-                    };
-                }
-            }
-        }
+        });
     }
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut config = WindowConfig {
-        title: "mullion · 控件展示".into(),
+        title: "mullion · egui 控件展示".into(),
         size: (1000, 640),
         visible: true,
         smoke: None,
@@ -205,7 +194,9 @@ fn main() {
         });
     }
 
-    let stats = run(Box::new(Gallery::default()), config).expect("window creation failed");
+    let mut gallery = Gallery::default();
+    let stats =
+        run_egui(Box::new(move |ctx| gallery.ui(ctx)), config).expect("window creation failed");
     println!(
         "{{\"frames\":{},\"width\":{},\"height\":{},\"scale\":{:.3},\"avg_frame_ms\":{:.3},\"opaque_pixels\":{},\"fb_hash\":\"{:016x}\"}}",
         stats.frames,

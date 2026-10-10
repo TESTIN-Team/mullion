@@ -71,3 +71,10 @@
 **背景**:tooltip 若随控件内联绘制,后画的窗口会盖住它。
 **决策**:`Ctx::queue_tooltip` 只登记(id、锚点、文本),`Ctx::end()` 里先冲刷主层、再单独一层绘制全部提示,保证提示永远置顶;悬停计时按 id 存 `Memory::hover_since`(注入时间,倒流即重计),离开矩形或指针丢失清除,本帧未调用的 id 帧末清除。`FrameInput::screen`(客户区逻辑矩形)由 host 提供,气泡 `fit_inside` 先平移后夹取。
 **备注(已知边界)**:客户区极小时气泡被压扁可能裁切文字。
+
+## D-012 UI 层切换 egui,自研核心退役(2026-10-10)
+
+**背景**:用户决定"改为 egui"。自研控件/排版/光栅化路线的维护成本与成熟度差距明显;egui 提供完整控件集、无障碍输入语义与久经考验的布局。
+**决策**:`crates/mullion`(自研核心)整体移除,历史与凭证保留;`mullion-host` 重定位为 egui 的 Win32+WGL 后端——消息泵翻译为 `egui::RawInput`(指针/按键/滚轮/文本/IME),`platform_output` 回写剪贴板/光标图标/IME 光标矩形;绘制走 GL 1.1 兼容管线(`TexturesDelta` 纹理管理 + 逐裁剪 scissors + 预乘混合),smoke 凭证改为 `glReadPixels` 回读。
+**工具链影响**:egui 依赖链含 raw-dylib(windows-link),GNU target 上 rustc 需外部 dlltool+as(本机不可用),因此产物钉 MSVC target + lld-link + xwin(junction 共享 rimely 工具)。新基线哈希 `1dfb43e5d3d74255`。
+**已知边界**:帧哈希的确定性依赖同机 GL 光栅化(不再是我们自己的纯 CPU 光栅化);T-004(自研 ComboBox)随切换取消,ComboBox 由 egui 内建。

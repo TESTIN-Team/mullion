@@ -1,8 +1,0 @@
-[package]
-name = "mullion"
-description = "Platform-independent immediate-mode GUI core: layout, widgets, input, software rasterizer. Zero dependencies."
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-rust-version.workspace = true

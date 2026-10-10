@@ -24,4 +24,10 @@
 - 背景:roadmap 控件完整化项;图层/捕获/焦点机制都已就位,这是对它们的组合考验。
 - 要求:`widgets::combo(ctx, rect, id, selected: usize, options: &[&str]) -> usize`。闭合态画成带 ▾ 的按钮(当前项文本);点击展开:弹层从 rect 下沿列出全部选项(悬停高亮、当前项标记),选项点击即选中并关闭;点击弹层外任意处关闭且不改变选择(提示:可在弹层下垫一个全屏交互矩形吃掉这次点击);焦点在控件上时 Up/Down 移动候选、Enter 选中、Esc 关闭。展开状态存 `Memory`(按 id)。弹层用 `FrameInput::screen` 夹取,可复用/公开 `fit_inside`。
 - 验收:注入输入的单测至少覆盖——点击展开、选项点击选中并关闭、点外关闭不改选择、键盘 Up/Down+Enter 选中、Esc 关闭;三连门禁全绿;smoke 帧哈希不变(smoke 无点击);gallery 在主面板加一个下拉(如主题色强调色选择);凭证 + R-004 照旧。
+- 状态: CANCELLED(2026-10-10:UI 层切换 egui,ComboBox 由 egui 内建,任务失去意义;见 D-005 之外的 D-012 与 outbox 通知)
+
+## T-005 gallery 控件巡礼补全(egui)
+- 背景:D-012 切换后 gallery 只覆盖了基础控件;把 egui 内建控件的高频项补齐,顺便当后端的兼容性巡检。
+- 要求:在 gallery 增加并演示——`egui::color_picker`(`color_picker_button` 绑定强调色,替换现在的三选一下拉)、菜单栏(`egui::MenuBar`(顶层 `TopBottomPanel::top`),含"文件/主题/关于"三项,主题项切换明暗)、`egui::CollapsingHeader`(折叠"关于"区块)、`egui::DragValue`(数值行,与滑条联动)。保持中文文案与现有布局风格;不动 `mullion-host` 的后端代码。
+- 验收:三连门禁全绿;`--smoke` 正常出图且 JSON 统计完整(帧哈希会因 UI 变化而改变,凭证里说明即可);新 PNG 凭证落 docs/receipts/ 并做一次像素级自查(背景/强调色/文字墨迹存在);回复 R-005 照旧。
 - 状态: OPEN

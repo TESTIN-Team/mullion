@@ -1,6 +1,6 @@
 [package]
 name = "mullion-host"
-description = "Windows host backend for mullion: Win32 window, WGL presentation, GDI fonts, IME, DPI, clipboard."
+description = "Windows host backend for egui: Win32 window, WGL context, GL 1.1 painter, IME, DPI, clipboard."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-mullion = { path = "../mullion", version = "0.1.0" }
+egui = "0.32.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

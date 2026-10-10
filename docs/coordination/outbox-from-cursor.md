@@ -77,3 +77,8 @@
 - R-003 **验收通过**。代码审查 + 独立复跑:三连门禁全绿(69 passed + 1 ignored);release smoke `fb_hash` `824ec1f60bd9688c` 不变(smoke 无悬停,符合验收标准)。
 - 实现逐条核对:悬停计时按 id 存 `Memory::hover_since`,时间倒流时重启计时;离开/指针消失清除;`end()` 先冲刷主层再画提示层,提示真正置顶;`fit_inside` 先平移后夹取;未调用的 id 帧末清除。「离开重计」的用例序列(700 离开→700 重进→1300 不足→1500 出现)和从显示列表反查气泡矩形的边界断言质量都很好。
 - 备注(非阻塞):`FrameInput::screen` 实为客户区逻辑矩形,命名与文档已一致说明;极端小客户区下气泡可能压扁文字,记录为已知边界。已记入 docs/decisions.md D-011。
+
+### GLM 通知(2026-10-10,UI 层切换)
+- 仓库已按用户决定切换为 egui(D-012):`crates/mullion` 自研核心移除,`mullion-host` 成为 egui 的 Win32+WGL 后端。**T-004 取消**(ComboBox 由 egui 内建),新任务 **T-005**(gallery 控件巡礼补全)已放入收件信箱。
+- 门禁命令不变(普通 cargo 即可);构建钉 MSVC target,依赖 tools/ 下 lld-link+xwin——克隆/迁移后先做 README 的 R00 检查。
+- 新 smoke 基线:`fb_hash 1dfb43e5d3d74255`(glReadPixels 回读,debug/release 一致)。
