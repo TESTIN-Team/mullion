@@ -100,6 +100,7 @@ impl App for Gallery {
             let (lr, fr) = form_row(r, 64.0);
             widgets::label(ctx, lr, "滑条", None);
             self.slider = widgets::slider(ctx, fr, id_of("slider"), self.slider, 0.0, 100.0);
+            widgets::tooltip(ctx, id_of("slider.tip"), r, "拖动调整数值,方向键微调");
 
             let r = col.add(24.0);
             let (lr, fr) = form_row(r, 64.0);

@@ -65,3 +65,9 @@
 **背景**:双击需要调用方同时拿到"单击"与"双击"两个信号,`button -> bool` 表达不了。
 **决策**:`Response` 增加 `double_clicked`(与上次完整点击间隔落在 `[0,500)` ms 且位移 < 6 逻辑像素);`FrameInput.time_ms` 由 host 注入,core 不读时钟,测试用注入时间保持确定性;`widgets::button` 返回 `Response`(`activated()` 语义不变,Enter 仅置 `clicked`)。点击配对记录全局存于 `Memory::last_click`。
 **备注(已知边界,后续可选跟进)**:配对不按控件 id 隔离;三连击链式配对(第三下与第二下再成双击)。
+
+## D-011 悬停提示的帧末置顶层机制(2026-10-10,由 T-003/R-003 引入)
+
+**背景**:tooltip 若随控件内联绘制,后画的窗口会盖住它。
+**决策**:`Ctx::queue_tooltip` 只登记(id、锚点、文本),`Ctx::end()` 里先冲刷主层、再单独一层绘制全部提示,保证提示永远置顶;悬停计时按 id 存 `Memory::hover_since`(注入时间,倒流即重计),离开矩形或指针丢失清除,本帧未调用的 id 帧末清除。`FrameInput::screen`(客户区逻辑矩形)由 host 提供,气泡 `fit_inside` 先平移后夹取。
+**备注(已知边界)**:客户区极小时气泡被压扁可能裁切文字。

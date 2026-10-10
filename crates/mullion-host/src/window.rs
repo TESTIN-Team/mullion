@@ -685,6 +685,12 @@ pub fn run(app: Box<dyn App>, config: WindowConfig) -> Option<RunStats> {
                     .take()
                     .and_then(|_| clipboard::get_text(hwnd)),
                 time_ms: runner.epoch.elapsed().as_secs_f64() * 1000.0,
+                screen: Some(mullion::Rect::from_xywh(
+                    0.0,
+                    0.0,
+                    runner.logical_size.0 as f32,
+                    runner.logical_size.1 as f32,
+                )),
             };
             let t0 = std::time::Instant::now();
 

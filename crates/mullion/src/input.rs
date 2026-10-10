@@ -1,7 +1,7 @@
 //! Per-frame input events. The host translates OS messages into logical
 //! pixels and semantic keys; the core never sees scan codes or window rects.
 
-use crate::geometry::Vec2;
+use crate::geometry::{Rect, Vec2};
 
 /// Keyboard modifiers held during an event.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -88,4 +88,6 @@ pub struct FrameInput {
     /// Monotonic milliseconds from a host-chosen epoch. The core never
     /// reads a clock; tests and the host both supply this.
     pub time_ms: f64,
+    /// Logical client rectangle. `None` leaves overlays unclamped.
+    pub screen: Option<Rect>,
 }

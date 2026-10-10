@@ -20,6 +20,25 @@ use std::sync::Arc;
 const DOUBLE_CLICK_MS: f64 = 500.0;
 const DOUBLE_CLICK_SLOP: f32 = 6.0;
 
+/// Shift `r` into `outer`, then shrink it if it is still larger than `outer`.
+fn fit_inside(r: Rect, outer: Rect) -> Rect {
+    let mut x = r.min.x;
+    let mut y = r.min.y;
+    if x + r.width() > outer.max.x {
+        x = outer.max.x - r.width();
+    }
+    if y + r.height() > outer.max.y {
+        y = outer.max.y - r.height();
+    }
+    if x < outer.min.x {
+        x = outer.min.x;
+    }
+    if y < outer.min.y {
+        y = outer.min.y;
+    }
+    Rect::from_min_size(Vec2::new(x, y), r.size()).clamp_to(outer)
+}
+
 /// Result of resolving interaction for one widget this frame.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Response {
@@ -69,7 +88,17 @@ pub struct Ctx {
     ime_caret: Option<Vec2>,
     copy_text: Option<String>,
     paste_id: Option<Id>,
+    tips: Vec<PendingTip>,
+    tip_seen: Vec<Id>,
 }
+
+struct PendingTip {
+    anchor: Vec2,
+    text: String,
+}
+
+const TIP_GAP: f32 = 8.0;
+const TIP_PAD: f32 = 8.0;
 
 impl Ctx {
     pub fn new(backend: Arc<dyn crate::text::FontBackend + Send + Sync>) -> Self {
@@ -86,6 +115,8 @@ impl Ctx {
             ime_caret: None,
             copy_text: None,
             paste_id: None,
+            tips: Vec::new(),
+            tip_seen: Vec::new(),
         }
     }
 
@@ -102,6 +133,8 @@ impl Ctx {
         self.ime_caret = None;
         self.copy_text = None;
         self.paste_id = None;
+        self.tips.clear();
+        self.tip_seen.clear();
         // Keep the capture alive on the release frame so the pressed widget
         // can observe `clicked`; drop it if the pointer is up without one.
         if !self.input.primary_down && !self.input.primary_released {
@@ -112,6 +145,7 @@ impl Ctx {
     /// Finish the frame: flush the last layer, promote this frame's
     /// registration into `memory`, move keyboard focus on Tab.
     pub fn end(&mut self) -> FrameOutput {
+        self.finish_tooltips();
         if !self.cur.is_empty() || self.display.layers.is_empty() {
             self.display.layers.push(std::mem::take(&mut self.cur));
         } else {
@@ -155,6 +189,84 @@ impl Ctx {
             copy_text: self.copy_text.take(),
             paste_id: self.paste_id,
         }
+    }
+
+    /// Arm a tooltip for `id` while the pointer stays inside `rect`.
+    /// Returns whether the delay has elapsed and a bubble will be drawn
+    /// on its own layer at the end of the frame. Leaving the rect, or
+    /// losing the pointer, clears the timer.
+    pub fn queue_tooltip(&mut self, id: Id, rect: Rect, text: &str) -> bool {
+        self.tip_seen.push(id);
+        let Some(anchor) = self.input.mouse_pos.filter(|p| rect.contains(*p)) else {
+            self.memory.hover_since.remove(&id);
+            return false;
+        };
+        let now = self.input.time_ms;
+        let since = match self.memory.hover_since.get(&id).copied() {
+            Some(s) if now >= s => s,
+            _ => {
+                self.memory.hover_since.insert(id, now);
+                now
+            }
+        };
+        if now - since < 800.0 {
+            return false;
+        }
+        self.tips.push(PendingTip {
+            anchor,
+            text: text.to_string(),
+        });
+        true
+    }
+
+    fn finish_tooltips(&mut self) {
+        self.memory
+            .hover_since
+            .retain(|id, _| self.tip_seen.contains(id));
+        self.tip_seen.clear();
+        if self.tips.is_empty() {
+            return;
+        }
+        if !self.cur.is_empty() {
+            self.display.layers.push(std::mem::take(&mut self.cur));
+        }
+        let tips = std::mem::take(&mut self.tips);
+        for tip in tips {
+            self.paint_tip(&tip);
+        }
+        if !self.cur.is_empty() {
+            self.display.layers.push(std::mem::take(&mut self.cur));
+        }
+    }
+
+    fn paint_tip(&mut self, tip: &PendingTip) {
+        let layout = self.layout_text(&tip.text);
+        let scale = self.style.scale;
+        let text_w = layout.width / scale;
+        let text_h = (layout.ascent + layout.descent) / scale;
+        let size = Vec2::new(text_w + TIP_PAD * 2.0, text_h + TIP_PAD * 2.0);
+        let raw = Rect::from_min_size(
+            Vec2::new(tip.anchor.x + TIP_GAP, tip.anchor.y - TIP_GAP - size.y),
+            size,
+        );
+        let bubble = match self.input.screen {
+            Some(screen) => fit_inside(raw, screen),
+            None => raw,
+        };
+        let th = self.style.theme;
+        let rounding = self.style.spacing.rounding;
+        self.fill_stroke(
+            bubble,
+            Some(th.surface),
+            Some(Stroke::new(th.border, self.style.spacing.border_w)),
+            rounding,
+        );
+        let baseline = bubble.min.y + TIP_PAD + layout.ascent / scale;
+        self.text_at(
+            layout,
+            Vec2::new(bubble.min.x + TIP_PAD, baseline),
+            th.text_dim,
+        );
     }
 
     // ---- interaction ----

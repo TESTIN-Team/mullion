@@ -208,6 +208,8 @@ pub struct Memory {
     pub last_mouse: Option<Vec2>,
     /// Last completed primary click, for double-click detection.
     pub last_click: Option<ClickRecord>,
+    /// When the pointer entered each tooltip target, in `FrameInput::time_ms`.
+    pub hover_since: HashMap<Id, f64>,
     /// Interaction rects registered last frame, in z order (later = on top).
     pub prev_rects: Vec<(Id, crate::geometry::Rect)>,
     /// Focusable ids registered last frame, in registration order.

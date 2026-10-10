@@ -53,6 +53,14 @@ pub fn label_text(ctx: &mut Ctx, rect: Rect, text: &str, color: Color) -> Arc<Te
     layout
 }
 
+/// Hover hint. Appears after the pointer has stayed inside `rect` for
+/// 800 ms of injected `time_ms`. Drawn on a new layer, above the pointer
+/// and clamped to `FrameInput::screen` when the host provides one.
+/// Leaving the rect or losing the pointer restarts the timer.
+pub fn tooltip(ctx: &mut Ctx, id: Id, rect: Rect, text: &str) -> bool {
+    ctx.queue_tooltip(id, rect, text)
+}
+
 /// A static text label, clipped to `rect`.
 pub fn label(ctx: &mut Ctx, rect: Rect, text: &str, color: Option<Color>) {
     let color = color.unwrap_or(ctx.style.theme.text);
@@ -652,6 +660,107 @@ mod tests {
             primary_down: pressed || (!released && mouse.is_some()),
             ..Default::default()
         }
+    }
+
+    const TIP: Id = 99;
+
+    fn tip_rect() -> Rect {
+        Rect::from_xywh(0.0, 0.0, 100.0, 40.0)
+    }
+
+    fn hover(c: &mut Ctx, pos: Option<Vec2>, time_ms: f64) -> bool {
+        c.begin(FrameInput {
+            mouse_pos: pos,
+            time_ms,
+            ..Default::default()
+        });
+        let shown = tooltip(c, TIP, tip_rect(), "hint");
+        c.end();
+        shown
+    }
+
+    #[test]
+    fn tooltip_shows_after_800ms() {
+        let mut c = ctx();
+        let inside = Some(Vec2::new(10.0, 10.0));
+        assert!(
+            !hover(&mut c, inside, 0.0),
+            "the first sample only starts the timer"
+        );
+        assert!(
+            hover(&mut c, Some(Vec2::new(80.0, 30.0)), 800.0),
+            "800 ms inside the rect shows the tip, even if the pointer moved"
+        );
+    }
+
+    #[test]
+    fn tooltip_hidden_before_800ms() {
+        let mut c = ctx();
+        let inside = Some(Vec2::new(10.0, 10.0));
+        assert!(!hover(&mut c, inside, 0.0));
+        assert!(
+            !hover(&mut c, inside, 600.0),
+            "600 ms is still short of the delay"
+        );
+    }
+
+    #[test]
+    fn tooltip_resets_when_pointer_leaves() {
+        let mut c = ctx();
+        let inside = Some(Vec2::new(10.0, 10.0));
+        assert!(!hover(&mut c, inside, 0.0));
+        assert!(!hover(&mut c, inside, 500.0));
+        assert!(!hover(&mut c, Some(Vec2::new(400.0, 400.0)), 700.0));
+        assert!(!hover(&mut c, inside, 700.0), "re-entry starts a new timer");
+        assert!(
+            !hover(&mut c, inside, 1_300.0),
+            "600 ms after re-entry is not enough"
+        );
+        assert!(
+            hover(&mut c, inside, 1_500.0),
+            "800 ms after re-entry shows it"
+        );
+    }
+
+    #[test]
+    fn tooltip_bubble_stays_inside_screen() {
+        let mut c = ctx();
+        let screen = Rect::from_xywh(0.0, 0.0, 100.0, 80.0);
+        let pos = Some(Vec2::new(90.0, 4.0));
+        c.begin(FrameInput {
+            mouse_pos: pos,
+            time_ms: 0.0,
+            screen: Some(screen),
+            ..Default::default()
+        });
+        assert!(!tooltip(&mut c, TIP, tip_rect(), "hint"));
+        c.end();
+
+        c.begin(FrameInput {
+            mouse_pos: pos,
+            time_ms: 800.0,
+            screen: Some(screen),
+            ..Default::default()
+        });
+        assert!(tooltip(&mut c, TIP, tip_rect(), "hint"));
+        c.end();
+
+        let bubble = c
+            .display
+            .layers
+            .iter()
+            .rev()
+            .find_map(|layer| {
+                layer.cmds.iter().find_map(|cmd| match cmd {
+                    crate::draw::Cmd::Rect { rect, fill, .. } => fill.is_some().then_some(*rect),
+                    _ => None,
+                })
+            })
+            .expect("tooltip layer has a filled rect");
+        assert!(bubble.min.x >= screen.min.x - 0.01);
+        assert!(bubble.min.y >= screen.min.y - 0.01);
+        assert!(bubble.max.x <= screen.max.x + 0.01);
+        assert!(bubble.max.y <= screen.max.y + 0.01);
     }
 
     fn key(k: Key, ctrl: bool) -> KeyEvent {

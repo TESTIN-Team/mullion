@@ -18,4 +18,10 @@
 - 背景:复用 T-002 刚落地的 `time_ms` 管线做第二个交互件,roadmap 交互完整化项。
 - 要求:新增 `widgets::tooltip(ctx, id, rect, text)`:指针在 `rect` 内悬停 ≥ 800ms(`FrameInput.time_ms` 判定,状态按 id 存 `Memory`,悬停中断或离开即复位)时,在新图层于指针右上方绘制提示气泡(圆角、surface 底、边框、text_dim 文本),整体夹在屏幕/窗口可视区内。gallery 给滑条行加一个 tooltip(文案如"拖动调整数值,方向键微调")。
 - 验收:注入时间单测至少覆盖——悬停 800ms 出现、600ms 未出现、中途离开后重新计时;smoke 帧哈希不变(smoke 无悬停);三连门禁全绿;凭证 + R-003 照旧。
+- 状态: DONE（凭证 `docs/receipts/20261010-tooltip.md`，回复 R-003）
+
+## T-004 下拉框 ComboBox(core + gallery)
+- 背景:roadmap 控件完整化项;图层/捕获/焦点机制都已就位,这是对它们的组合考验。
+- 要求:`widgets::combo(ctx, rect, id, selected: usize, options: &[&str]) -> usize`。闭合态画成带 ▾ 的按钮(当前项文本);点击展开:弹层从 rect 下沿列出全部选项(悬停高亮、当前项标记),选项点击即选中并关闭;点击弹层外任意处关闭且不改变选择(提示:可在弹层下垫一个全屏交互矩形吃掉这次点击);焦点在控件上时 Up/Down 移动候选、Enter 选中、Esc 关闭。展开状态存 `Memory`(按 id)。弹层用 `FrameInput::screen` 夹取,可复用/公开 `fit_inside`。
+- 验收:注入输入的单测至少覆盖——点击展开、选项点击选中并关闭、点外关闭不改选择、键盘 Up/Down+Enter 选中、Esc 关闭;三连门禁全绿;smoke 帧哈希不变(smoke 无点击);gallery 在主面板加一个下拉(如主题色强调色选择);凭证 + R-004 照旧。
 - 状态: OPEN
