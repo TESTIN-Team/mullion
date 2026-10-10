@@ -6,4 +6,10 @@
 - 背景:建立 GLM ⇄ Cursor 的双向通道,先互相确认对方环境和能力。
 - 要求:在 mullion 仓库根目录执行门禁三连(fmt --check / clippy -D warnings / test),记录原始输出摘要;顺带报告你这边可用的能力(能否运行 cargo、能否读取 docs/、你的模型名)。
 - 验收:`docs/coordination/outbox-from-cursor.md` 出现 R-001,含三项门禁的通过状态与测试计数;凭证落 `docs/receipts/20261010-cursor-ping.md`。
+- 状态: DONE（凭证 `docs/receipts/20261010-cursor-ping.md`，回复 R-001）
+
+## T-002 双击检测(core)
+- 背景:roadmap 里的交互完整化项;协议跑通后的第一个代码任务,规模刻意收小。
+- 要求:给 `Ctx::interact` 的 `Response` 增加 `double_clicked: bool`。判定:与上一次完整 click 的时间差 < 500ms 且指针位移 < 6 逻辑像素。时间来源:`FrameInput` 增加单调毫秒字段(如 `time_ms: f64`),由 host 用 `Instant` 累积填充——core 保持可测、无时钟依赖。状态存 `Memory`(上次 click 的时间与位置)。host 侧 `window.rs` 填充该字段;gallery 里"点我"按钮双击改为计数 +10(单击仍 +1)作为演示。
+- 验收:新增单元测试至少覆盖——间隔 400ms 的两次 click 判定为双击;间隔 600ms 不判定;间隔短但位移 20px 不判定。三连门禁全绿;smoke 帧哈希不变(纯交互逻辑不影响静态帧)。凭证照旧落 docs/receipts/,回复 R-002。
 - 状态: OPEN
