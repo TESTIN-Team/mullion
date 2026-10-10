@@ -63,10 +63,11 @@ pub fn label(ctx: &mut Ctx, rect: Rect, text: &str, color: Option<Color>) {
 
 // ---- buttons ----
 
-/// A push button. Returns true when activated (click, or Enter while focused).
-pub fn button(ctx: &mut Ctx, rect: Rect, text: &str) -> bool {
+/// A push button. `clicked` is also set for Enter while focused.
+/// `double_clicked` stays pointer-only.
+pub fn button(ctx: &mut Ctx, rect: Rect, text: &str) -> crate::context::Response {
     let id = auto_id(rect);
-    let resp = ctx.interact(id, rect);
+    let mut resp = ctx.interact(id, rect);
     ctx.register_focusable(id);
 
     let th = ctx.style.theme;
@@ -80,15 +81,14 @@ pub fn button(ctx: &mut Ctx, rect: Rect, text: &str) -> bool {
     };
     ctx.fill_stroke(rect, Some(fill), Some(stroke(ctx, th.border)), sp.rounding);
 
-    let mut activated = resp.clicked;
     if resp.focused && ctx.key_pressed(Key::Enter, false) {
-        activated = true;
+        resp.clicked = true;
     }
     centered_text(ctx, rect, text, th.text);
     if resp.focused {
         ctx.fill_stroke(rect, None, Some(stroke(ctx, th.accent)), sp.rounding);
     }
-    activated
+    resp
 }
 
 /// A pill toggle switch. Returns the new state.

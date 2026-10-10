@@ -187,6 +187,13 @@ impl EditState {
     }
 }
 
+/// Time and pointer position of one completed primary click.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClickRecord {
+    pub time_ms: f64,
+    pub pos: Vec2,
+}
+
 /// Cross-frame widget state keyed by [`Id`].
 #[derive(Clone, Debug, Default)]
 pub struct Memory {
@@ -199,6 +206,8 @@ pub struct Memory {
     pub edit: HashMap<Id, EditState>,
     /// Pointer position last frame (logical px), for drag deltas.
     pub last_mouse: Option<Vec2>,
+    /// Last completed primary click, for double-click detection.
+    pub last_click: Option<ClickRecord>,
     /// Interaction rects registered last frame, in z order (later = on top).
     pub prev_rects: Vec<(Id, crate::geometry::Rect)>,
     /// Focusable ids registered last frame, in registration order.

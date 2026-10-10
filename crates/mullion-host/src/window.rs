@@ -11,6 +11,7 @@ use crate::wgl::WglPresent;
 use mullion::input::{FrameInput, KeyEvent, Modifiers, Preedit};
 use mullion::render::{Framebuffer, render};
 use mullion::{Ctx, Vec2};
+use std::time::Instant;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{GetDC, HDC, ReleaseDC, ScreenToClient, ValidateRect};
 use windows_sys::Win32::Graphics::OpenGL::{
@@ -209,6 +210,8 @@ struct Runner {
     paste_request: Option<mullion::Id>,
     smoke: Option<SmokeConfig>,
     stats: RunStats,
+    /// Epoch for [`FrameInput::time_ms`]. The core never reads a clock.
+    epoch: Instant,
 }
 
 fn get_client_size(hwnd: HWND) -> (u32, u32) {
@@ -623,6 +626,7 @@ pub fn run(app: Box<dyn App>, config: WindowConfig) -> Option<RunStats> {
                 scale,
                 ..Default::default()
             },
+            epoch: Instant::now(),
         });
         let runner_ptr: *mut Runner = &mut *runner;
         windows_sys::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
@@ -680,6 +684,7 @@ pub fn run(app: Box<dyn App>, config: WindowConfig) -> Option<RunStats> {
                     .paste_request
                     .take()
                     .and_then(|_| clipboard::get_text(hwnd)),
+                time_ms: runner.epoch.elapsed().as_secs_f64() * 1000.0,
             };
             let t0 = std::time::Instant::now();
 

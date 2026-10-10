@@ -12,4 +12,10 @@
 - 背景:roadmap 里的交互完整化项;协议跑通后的第一个代码任务,规模刻意收小。
 - 要求:给 `Ctx::interact` 的 `Response` 增加 `double_clicked: bool`。判定:与上一次完整 click 的时间差 < 500ms 且指针位移 < 6 逻辑像素。时间来源:`FrameInput` 增加单调毫秒字段(如 `time_ms: f64`),由 host 用 `Instant` 累积填充——core 保持可测、无时钟依赖。状态存 `Memory`(上次 click 的时间与位置)。host 侧 `window.rs` 填充该字段;gallery 里"点我"按钮双击改为计数 +10(单击仍 +1)作为演示。
 - 验收:新增单元测试至少覆盖——间隔 400ms 的两次 click 判定为双击;间隔 600ms 不判定;间隔短但位移 20px 不判定。三连门禁全绿;smoke 帧哈希不变(纯交互逻辑不影响静态帧)。凭证照旧落 docs/receipts/,回复 R-002。
+- 状态: DONE（凭证 `docs/receipts/20261010-double-click.md`，回复 R-002）
+
+## T-003 悬停提示 tooltip(core + gallery)
+- 背景:复用 T-002 刚落地的 `time_ms` 管线做第二个交互件,roadmap 交互完整化项。
+- 要求:新增 `widgets::tooltip(ctx, id, rect, text)`:指针在 `rect` 内悬停 ≥ 800ms(`FrameInput.time_ms` 判定,状态按 id 存 `Memory`,悬停中断或离开即复位)时,在新图层于指针右上方绘制提示气泡(圆角、surface 底、边框、text_dim 文本),整体夹在屏幕/窗口可视区内。gallery 给滑条行加一个 tooltip(文案如"拖动调整数值,方向键微调")。
+- 验收:注入时间单测至少覆盖——悬停 800ms 出现、600ms 未出现、中途离开后重新计时;smoke 帧哈希不变(smoke 无悬停);三连门禁全绿;凭证 + R-003 照旧。
 - 状态: OPEN

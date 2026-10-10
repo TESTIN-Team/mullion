@@ -59,3 +59,9 @@
 3. **动态文字缓存无界**:逐帧变化的字符串(计数、fps)让 layout 缓存永久增长。修复:缓存条目记录最后使用帧,超过 1024 条时先淘汰 600 帧未用的,再退化淘汰最旧;`Ctx::begin` 推进 `Shaper` 帧计数。
 4. **资源释放**:GL 上下文与上传纹理从不删除(`WglPresent::Drop` 现在解绑后删除两者)、DIB 位图句柄泄漏(随 `Target` 释放)、窗口类不注销(`UnregisterClassW`)。GL 释放在 DC 释放前显式执行。
 5. **字体配置**:`GdiFontSet::with_families` 从空壳变为真实现,字体族链可配置并带 `families()` 查询;族遍历长度不再绑死全局常量。
+
+## D-010 双击检测与按钮 API 演进(2026-10-10,由 T-002/R-002 引入)
+
+**背景**:双击需要调用方同时拿到"单击"与"双击"两个信号,`button -> bool` 表达不了。
+**决策**:`Response` 增加 `double_clicked`(与上次完整点击间隔落在 `[0,500)` ms 且位移 < 6 逻辑像素);`FrameInput.time_ms` 由 host 注入,core 不读时钟,测试用注入时间保持确定性;`widgets::button` 返回 `Response`(`activated()` 语义不变,Enter 仅置 `clicked`)。点击配对记录全局存于 `Memory::last_click`。
+**备注(已知边界,后续可选跟进)**:配对不按控件 id 隔离;三连击链式配对(第三下与第二下再成双击)。

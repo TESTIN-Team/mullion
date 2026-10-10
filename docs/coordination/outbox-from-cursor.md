@@ -21,3 +21,31 @@
 ### GLM 验收留言(2026-10-10)
 - R-001 **验收通过**。独立复核:工作树改动仅声明的 4 个文件;三连门禁本机复跑全绿(fmt 0 错、clippy 0 错、测试 62 passed + 1 ignored,与凭证一致);凭证格式合规(含原始输出与退出码)。
 - 本条验收与 Q-001 答复、T-002 由 GLM 一并提交推送(见提交信息)。此后跨机器可见,但按约定仍不设轮询。
+
+## R-002 双击检测
+- 对应: T-002
+- 做了什么: `Response` 增加 `double_clicked`。完整 click 与上一次 click 的时间差落在 `[0, 500)` 毫秒且指针位移 `< 6` 逻辑像素时为真。时间来自 `FrameInput.time_ms`，core 不读时钟；host 用 `Instant` 从窗口创建起累积毫秒。上次 click 的时间与位置存在 `Memory.last_click`。
+- gallery: 「点我」单击 `+1`，双击那一帧 `+10`（这一帧不再额外 `+1`）。一次双击手势因此是先 `+1` 再 `+10`。键盘 Enter 仍算单击。
+- 改了哪些文件:
+  - `crates/mullion/src/input.rs`
+  - `crates/mullion/src/memory.rs`
+  - `crates/mullion/src/context.rs`
+  - `crates/mullion/src/widgets.rs`（`button` 改为返回 `Response`；Enter 仍把 `clicked` 置真）
+  - `crates/mullion-host/src/window.rs`
+  - `crates/mullion-host/examples/gallery.rs`
+  - `docs/coordination/inbox-for-cursor.md`
+  - `docs/coordination/outbox-from-cursor.md`
+  - `docs/receipts/20261010-double-click.md`
+- 命令与结果:
+  - `cargo fmt --all -- --check`：无输出，退出码 0
+  - `cargo clippy --workspace --all-targets -- -D warnings`：退出码 0
+  - `cargo test --workspace`：65 passed，0 failed，1 ignored
+  - `cargo run -p mullion-host --example gallery --release -- --smoke`：`fb_hash` `824ec1f60bd9688c`，与 `docs/receipts/REVIEW-FIXES-20261009.md` 一致
+- 凭证: `docs/receipts/20261010-double-click.md`
+- 状态: 待 GLM 验收。改动在本机工作区，尚未提交、尚未推送。
+
+### GLM 验收留言(2026-10-10,T-002)
+- R-002 **验收通过**。代码审查 + 独立复跑:三连门禁全绿(65 passed + 1 ignored),release smoke `fb_hash` `824ec1f60bd9688c` 与基线一致(纯交互逻辑,静态帧未变,符合验收标准)。三组注入时间测试覆盖 400ms/600ms/位移 20px,与任务书一致。
+- 逐条核对实现:`ClickRecord` 存于 `Memory`;host 以 `Instant` epoch 填 `FrameInput::time_ms`,core 无时钟依赖 ✓;判定窗口 `[0,500)` 严格上界 + 6px slop ✓;Enter 只置 `clicked` ✓;gallery +1/+10 语义与描述一致 ✓。
+- `button` 签名 `bool -> Response` 属任务书之外的 API 演进,理由充分(调用方需同时区分单击/双击),调用方已全部适配,`activated()` 语义保持;已记入 docs/decisions.md D-010。
+- 两个已知边界(非阻塞,记入 D-010 备注):点击配对全局记录不按控件 id 隔离(UI 在两次点击间变化时可能把 A 的点击配到 B);三连击的第三下会与第二下再次配对成双击(Windows 链式行为)。

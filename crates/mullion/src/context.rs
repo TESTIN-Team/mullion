@@ -11,10 +11,14 @@ use crate::color::Color;
 use crate::draw::{Display, DrawList, Stroke};
 use crate::geometry::{Rect, Vec2};
 use crate::input::{FrameInput, Key, KeyEvent};
-use crate::memory::{Id, Memory};
+use crate::memory::{ClickRecord, Id, Memory};
 use crate::style::Style;
 use crate::text::{Shaper, TextLayout};
 use std::sync::Arc;
+
+/// A second click is a double-click when it lands strictly inside both limits.
+const DOUBLE_CLICK_MS: f64 = 500.0;
+const DOUBLE_CLICK_SLOP: f32 = 6.0;
 
 /// Result of resolving interaction for one widget this frame.
 #[derive(Clone, Copy, Debug, Default)]
@@ -22,6 +26,8 @@ pub struct Response {
     pub hovered: bool,
     /// Full press + release over the widget.
     pub clicked: bool,
+    /// Second complete click within 500 ms and 6 logical pixels of the previous one.
+    pub double_clicked: bool,
     /// The press happened on this widget this frame.
     pub drag_started: bool,
     /// Pointer is captured by this widget and still down.
@@ -175,6 +181,7 @@ impl Ctx {
         // frame already.
         let dragging = owns_pointer && self.input.primary_down;
         let clicked = self.input.primary_released && owns_pointer && hovered;
+        let double_clicked = self.note_click(clicked);
 
         let drag_delta = if dragging {
             self.input
@@ -189,11 +196,29 @@ impl Ctx {
         Response {
             hovered,
             clicked,
+            double_clicked,
             drag_started,
             dragging,
             drag_delta,
             focused: self.memory.focus == Some(id),
         }
+    }
+
+    /// Record a completed click and report whether it pairs with the previous one.
+    fn note_click(&mut self, clicked: bool) -> bool {
+        if !clicked {
+            return false;
+        }
+        let Some(pos) = self.input.mouse_pos else {
+            return false;
+        };
+        let time_ms = self.input.time_ms;
+        let double = self.memory.last_click.is_some_and(|prev| {
+            let dt = time_ms - prev.time_ms;
+            (0.0..DOUBLE_CLICK_MS).contains(&dt) && pos.sub(prev.pos).len() < DOUBLE_CLICK_SLOP
+        });
+        self.memory.last_click = Some(ClickRecord { time_ms, pos });
+        double
     }
 
     /// Topmost widget under the pointer using last frame's rects.
@@ -570,6 +595,71 @@ mod tests {
             c.memory.pointer_capture,
             Some(BTN),
             "capture survives the re-press"
+        );
+    }
+
+    fn click_at(c: &mut Ctx, pos: Vec2, time_ms: f64) -> Response {
+        c.begin(frame_input(Some(pos), true, false));
+        c.input.time_ms = time_ms;
+        c.interact(BTN, btn_rect());
+        c.end();
+        c.begin(frame_input(Some(pos), false, true));
+        c.input.time_ms = time_ms;
+        let r = c.interact(BTN, btn_rect());
+        c.end();
+        r
+    }
+
+    #[test]
+    fn double_click_within_400ms() {
+        let mut c = ctx();
+        c.begin(frame_input(None, false, false));
+        c.interact(BTN, btn_rect());
+        c.end();
+
+        let pos = Vec2::new(50.0, 15.0);
+        let first = click_at(&mut c, pos, 1_000.0);
+        assert!(first.clicked);
+        assert!(!first.double_clicked, "the first click has no pair");
+
+        let second = click_at(&mut c, pos, 1_400.0);
+        assert!(second.clicked);
+        assert!(
+            second.double_clicked,
+            "400 ms and no movement is a double-click"
+        );
+    }
+
+    #[test]
+    fn double_click_rejected_after_600ms() {
+        let mut c = ctx();
+        c.begin(frame_input(None, false, false));
+        c.interact(BTN, btn_rect());
+        c.end();
+
+        let pos = Vec2::new(50.0, 15.0);
+        click_at(&mut c, pos, 1_000.0);
+        let second = click_at(&mut c, pos, 1_600.0);
+        assert!(second.clicked);
+        assert!(
+            !second.double_clicked,
+            "600 ms is outside the 500 ms window"
+        );
+    }
+
+    #[test]
+    fn double_click_rejected_when_pointer_moves_20px() {
+        let mut c = ctx();
+        c.begin(frame_input(None, false, false));
+        c.interact(BTN, btn_rect());
+        c.end();
+
+        click_at(&mut c, Vec2::new(50.0, 15.0), 1_000.0);
+        let second = click_at(&mut c, Vec2::new(70.0, 15.0), 1_100.0);
+        assert!(second.clicked);
+        assert!(
+            !second.double_clicked,
+            "20 px of travel is outside the 6 px slop"
         );
     }
 }

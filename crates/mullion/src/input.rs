@@ -85,4 +85,7 @@ pub struct FrameInput {
     pub preedit: Option<Preedit>,
     /// Clipboard text delivered by the host for the focused edit field.
     pub paste: Option<String>,
+    /// Monotonic milliseconds from a host-chosen epoch. The core never
+    /// reads a clock; tests and the host both supply this.
+    pub time_ms: f64,
 }

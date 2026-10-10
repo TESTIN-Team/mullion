@@ -69,7 +69,10 @@ impl App for Gallery {
             let r = col.add(30.0);
             let (lr, fr) = form_row(r, 64.0);
             widgets::label(ctx, lr, "按钮", None);
-            if widgets::button(ctx, fr, "点我") {
+            let resp = widgets::button(ctx, fr, "点我");
+            if resp.double_clicked {
+                self.counter = self.counter.wrapping_add(10);
+            } else if resp.activated() {
                 self.counter = self.counter.wrapping_add(1);
             }
 
@@ -165,7 +168,7 @@ impl App for Gallery {
                 let stats = format!("FPS {:.0} · 缩放 {:.2}", self.fps, ctx.style.scale);
                 widgets::label(ctx, r, &stats, None);
                 let r = col.add(30.0);
-                if widgets::button(ctx, r, "切换主题") {
+                if widgets::button(ctx, r, "切换主题").activated() {
                     ctx.style.theme = if ctx.style.theme == mullion::Theme::dark() {
                         mullion::Theme::light()
                     } else {
