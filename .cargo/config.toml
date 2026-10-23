@@ -15,3 +15,10 @@ rustflags = [
     "-L", "native=tools/xwin-splat/sdk/lib/um/x86_64",
     "-L", "native=tools/xwin-splat/sdk/lib/ucrt/x86_64",
 ]
+
+# 2026-10-10:本机 PATH 上出现了 WinGet 安装的 llvm-mingw(clang-23 垫片 gcc),
+# 它接管了 GNU 宿主(build script)链接但没有 -lgcc 运行时。显式指回 rustup
+# 自带的真实 x86_64-w64-mingw32-gcc。绝对路径是刻意的:本仓库已通过 tools/
+# junction 与本机绑定(CI 宿主是 MSVC,不受此条影响)。
+[target.x86_64-pc-windows-gnu]
+linker = "C:/Users/rr/.rustup/toolchains/stable-x86_64-pc-windows-gnu/lib/rustlib/x86_64-pc-windows-gnu/bin/self-contained/x86_64-w64-mingw32-gcc.exe"

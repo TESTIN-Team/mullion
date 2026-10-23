@@ -12,7 +12,7 @@ struct Gallery {
     slider: f32,
     counter: u32,
     name: String,
-    combo: usize,
+    accent: egui::Color32,
     dark: bool,
     t0: Instant,
     frames: u64,
@@ -28,7 +28,7 @@ impl Default for Gallery {
             slider: 35.0,
             counter: 0,
             name: String::new(),
-            combo: 0,
+            accent: egui::Color32::from_rgb(79, 140, 255),
             dark: true,
             t0: Instant::now(),
             frames: 0,
@@ -36,13 +36,6 @@ impl Default for Gallery {
         }
     }
 }
-
-const THEMES: &[&str] = &["强调色 · 蓝", "强调色 · 绿", "强调色 · 橙"];
-const ACCENTS: [egui::Color32; 3] = [
-    egui::Color32::from_rgb(79, 140, 255),
-    egui::Color32::from_rgb(94, 190, 126),
-    egui::Color32::from_rgb(240, 160, 64),
-];
 
 impl Gallery {
     fn ui(&mut self, ctx: &egui::Context) {
@@ -59,8 +52,31 @@ impl Gallery {
         } else {
             egui::Visuals::light()
         };
-        visuals.selection.bg_fill = ACCENTS[self.combo.min(2)];
+        visuals.selection.bg_fill = self.accent;
         ctx.set_visuals(visuals);
+
+        egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("文件", |ui| {
+                    if ui.button("清空名字").clicked() {
+                        self.name.clear();
+                    }
+                });
+                ui.menu_button("主题", |ui| {
+                    let label = if self.dark {
+                        "切换为浅色"
+                    } else {
+                        "切换为深色"
+                    };
+                    if ui.button(label).clicked() {
+                        self.dark = !self.dark;
+                    }
+                });
+                ui.menu_button("关于", |ui| {
+                    ui.label("mullion · egui 的 Win32 + WGL 后端");
+                });
+            });
+        });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("mullion · egui 控件总览");
@@ -106,19 +122,25 @@ impl Gallery {
                             ui.add(slider).on_hover_text("拖动调整数值,方向键微调");
                             ui.end_row();
 
+                            ui.label("数值");
+                            ui.add(
+                                egui::DragValue::new(&mut self.slider)
+                                    .range(0.0..=100.0)
+                                    .speed(0.5)
+                                    .max_decimals(1),
+                            );
+                            ui.end_row();
+
                             ui.label("进度");
                             ui.add(egui::ProgressBar::new(self.slider / 100.0).show_percentage());
                             ui.end_row();
 
-                            ui.label("下拉");
-                            egui::ComboBox::from_id_salt("combo")
-                                .selected_text(THEMES[self.combo])
-                                .width(160.0)
-                                .show_ui(ui, |ui| {
-                                    for (i, name) in THEMES.iter().enumerate() {
-                                        ui.selectable_value(&mut self.combo, i, *name);
-                                    }
-                                });
+                            ui.label("强调色");
+                            egui::color_picker::color_edit_button_srgba(
+                                ui,
+                                &mut self.accent,
+                                egui::color_picker::Alpha::Opaque,
+                            );
                             ui.end_row();
                         });
 
@@ -153,8 +175,13 @@ impl Gallery {
                     });
 
                 ui.separator();
-                ui.label("支持中文 IME、选区、Ctrl+A/C/V/X(egui 内建)");
-                ui.label("悬停控件查看 tooltip;滑条支持方向键微调");
+                egui::CollapsingHeader::new("关于")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.label("mullion 是 egui 的 Win32 + WGL 后端,不依赖 winit。");
+                        ui.label("支持中文 IME、选区、Ctrl+A/C/V/X(egui 内建)");
+                        ui.label("悬停控件查看 tooltip;滑条与数值拖动联动");
+                    });
 
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                     ui.separator();

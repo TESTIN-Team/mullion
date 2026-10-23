@@ -82,3 +82,25 @@
 - 仓库已按用户决定切换为 egui(D-012):`crates/mullion` 自研核心移除,`mullion-host` 成为 egui 的 Win32+WGL 后端。**T-004 取消**(ComboBox 由 egui 内建),新任务 **T-005**(gallery 控件巡礼补全)已放入收件信箱。
 - 门禁命令不变(普通 cargo 即可);构建钉 MSVC target,依赖 tools/ 下 lld-link+xwin——克隆/迁移后先做 README 的 R00 检查。
 - 新 smoke 基线:`fb_hash 1dfb43e5d3d74255`(glReadPixels 回读,debug/release 一致)。
+
+## R-005 gallery 控件巡礼
+- 对应: T-005
+- 做了什么: 只改了 gallery。三选一下拉换成 `egui::color_picker::color_edit_button_srgba`（egui 0.32.3 没有 `color_picker_button`），默认强调色仍是 `(79, 140, 255)`，并写入 `visuals.selection.bg_fill`。顶层 `TopBottomPanel` 放了 `MenuBar`：文件清空名字、主题切换明暗、关于显示一句中文。右侧「关于」用 `CollapsingHeader`，默认展开。`DragValue` 与滑条共用 `self.slider`，范围 `0.0..=100.0`。没有改 `mullion-host` 后端。
+- 改了哪些文件:
+  - `crates/mullion-host/examples/gallery.rs`
+  - `docs/coordination/inbox-for-cursor.md`
+  - `docs/coordination/outbox-from-cursor.md`
+  - `docs/receipts/20261010-gallery-tour.md`
+  - `docs/receipts/gallery-smoke-t005.png`
+- 命令与结果:
+  - `cargo fmt --all -- --check`：无输出，退出码 0
+  - `cargo clippy --workspace --all-targets -- -D warnings`：退出码 0
+  - `cargo test --workspace`：7 passed，0 failed，0 ignored
+  - smoke JSON：`{"frames":12,"width":640,"height":360,"scale":1.000,"avg_frame_ms":9.426,"opaque_pixels":230400,"fb_hash":"f98415a03c8f90c5"}`
+  - 像素：640×360，230400/230400 不透明，背景 (27,27,27) 198580，强调色 2498，文字墨迹 2037
+- 凭证: `docs/receipts/20261010-gallery-tour.md`
+- 状态: 待 GLM 验收。改动在本机工作区，尚未提交、尚未推送。帧哈希相对 `1dfb43e5d3d74255` 的变化来自这次 UI。
+
+### GLM 验收留言(2026-10-10,T-005)
+- R-005 **验收通过**。代码审查:color_edit_button_srgba(egui 0.32.3 无 color_picker_button 的替代,发现并记录了 API 差异)、MenuBar(文件/主题/关于)、CollapsingHeader、DragValue 与滑条联动全部按规格落地,后端零改动。独立复跑:三连门禁全绿(7 passed),release smoke `fb_hash f98415a03c8f90c5` 与凭证一致;像素复核:顶部菜单栏文字墨迹 178 采样点、强调色在场、暗色背景主导。
+- 环境事故记录(与 T-005 无关):验收期间发现本机 PATH 新增了 WinGet 安装的 llvm-mingw(clang-23 垫片 gcc),导致 GNU 宿主 build script 链接找 -lgcc 失败。已在 `.cargo/config.toml` 把 GNU 宿主 linker 显式指回 rustup 自带的 x86_64-w64-mingw32-gcc(绝对路径,CI 的 MSVC 宿主不受影响)。rimely 在本机构建会遇到同样问题,修法相同。

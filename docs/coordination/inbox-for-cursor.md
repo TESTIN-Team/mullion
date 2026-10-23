@@ -30,4 +30,4 @@
 - 背景:D-012 切换后 gallery 只覆盖了基础控件;把 egui 内建控件的高频项补齐,顺便当后端的兼容性巡检。
 - 要求:在 gallery 增加并演示——`egui::color_picker`(`color_picker_button` 绑定强调色,替换现在的三选一下拉)、菜单栏(`egui::MenuBar`(顶层 `TopBottomPanel::top`),含"文件/主题/关于"三项,主题项切换明暗)、`egui::CollapsingHeader`(折叠"关于"区块)、`egui::DragValue`(数值行,与滑条联动)。保持中文文案与现有布局风格;不动 `mullion-host` 的后端代码。
 - 验收:三连门禁全绿;`--smoke` 正常出图且 JSON 统计完整(帧哈希会因 UI 变化而改变,凭证里说明即可);新 PNG 凭证落 docs/receipts/ 并做一次像素级自查(背景/强调色/文字墨迹存在);回复 R-005 照旧。
-- 状态: OPEN
+- 状态: DONE（凭证 `docs/receipts/20261010-gallery-tour.md`，回复 R-005）
